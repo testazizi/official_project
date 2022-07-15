@@ -1,0 +1,5 @@
+run insert_program_show_to_db.py
+run create_folders.py
+run split_live_into_ts.py
+run get_iframes_from_tsvideos.py
+run run_get_iframes_from_ts.videos.py
