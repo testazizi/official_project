@@ -77,8 +77,26 @@ def update_jingle_time(channel_name,jingle,user,password,localhost,db_name):
     
     connection.commit()
 
+
+
 def compare_images(i_frame,jingle):
-    pass
+    img1=cv2.imread(i_frame)
+    img2=cv2.imread(jingle)
+    #print(img1)
+    #print(img2)
+    
+    orb= cv2.ORB_create()
+    
+    kb_a, desc_a= orb.detectAndCompute(img1,None)
+    kb_b, desc_b= orb.detectAndCompute(img2,None)
+     
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches=bf.match(desc_a, desc_b)
+    similar_regions=[i for i in matches if i.distance < 80]
+    
+    if len(matches) ==0:
+        return 0
+    return len(similar_regions)/len(matches)
 
 
 
@@ -129,35 +147,38 @@ def get_folders_to_handle(channel_name,jingle,user,password,localhost,db_name):
 
 filename = str(sys.argv[1])
 
-#read the i_frame
-i_frame_detected= cv2.imread(filename)
 
-#get the current time which the time of the i_frame
-i_frame_time= time.strftime("%H:%M:00")
-
-#get all the jingles inside 2m folder as an example
-
-jingles = []
-for folder in list(get_folders_to_handle(table_name,jingle.split('/')[-2],user,password,localhost,db_name)):
-    for file in glob.glob("test_epg_server/jingles_iframes/"+folder+"/*.png"):
-        jingles.append(file)
-
-for jingle in jingles:
-    #check the similarity between the two images
-    result= compare_images(i_frame,jingle)
+def script5(filename):
+    #read the i_frame
+    i_frame_detected= cv2.imread(filename)
     
-    # if they're not similar do nothing
-    if result<0.5:
-        pass
+    #get the current time which the time of the i_frame
+    i_frame_time= time.strftime("%H:%M:00")
+    #get all the jingles inside 2m folder as an example
     
-    else:  #they are similar
+    jingles = []
+    for folder in list(get_folders_to_handle(table_name,jingle.split('/')[-2],user,password,localhost,db_name)):
+        for file in glob.glob(table_name+"/iframe_live/"+folder+"/*.png"):
+            jingles.append(file)
+    
+    for jingle in jingles:
+        #check the similarity between the two images
+        result= compare_images(i_frame,jingle)
         
-        logger.info('There is a similarity between this i_frame %s and this i_frame %s at %s',jingle,i_frame,i_frame_time)
-        dif_time = i_frame_time - get_date_of_jingle(table_name,jingle.split('/')[-2],user,password,localhost,db_name)
-        
-        if dif_time==0:
+        # if they're not similar do nothing
+        if result<0.98:
             pass
-        else:
-            update_jingle_time(table_name,jingle.split('/')[-2],user,password,localhost,db_name)
+
+        else:  
+            #they are similar
+            logger.info('There is a similarity between this i_frame %s and this i_frame %s at %s',jingle,i_frame,i_frame_time)
+            dif_time = i_frame_time - get_date_of_jingle(table_name,jingle.split('/')[-2],user,password,localhost,db_name)
+
+            if dif_time==0:
+                pass
+                
+            else:
+                update_jingle_time(table_name,jingle.split('/')[-2],user,password,localhost,db_name)
+                logger.info('There is an update in %s at %s',i_frame,i_frame_time)
 
 
