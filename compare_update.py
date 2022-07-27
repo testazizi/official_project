@@ -2,12 +2,22 @@
 import pandas as pd
 import mysql.connector
 import time
+import os
 import cv2
+import sys
+import logging
+from importlib import reload
+reload(logging)
+import coloredlogs
+import sqlalchemy
 from dotenv import load_dotenv
 from datetime import timedelta
 from datetime import datetime
 from pathlib import Path
+from functions import *
 from dotenv import load_dotenv
+import concurrent.futures
+import shutil
 import glob
 load_dotenv()
 
@@ -17,168 +27,70 @@ password = os.getenv('db_password')
 localhost = os.getenv('db_localhost')
 db_name = os.getenv('db_name')
 table_name=os.getenv('channel_name')
+channel_name=table_name
 
-
-
-def get_date_of_jingle(channel_name,jingle,user,password,localhost,db_name):
-    
-    current_date=time.strftime("%d:%m:%Y").replace(':','/')
-    current_time=datetime.strptime(time.strftime("%H:%M:%S"),"%H:%M:%S")
-    result=''
-    
-    connection = mysql.connector.connect(host=localhost,
-                         user=user,
-                         password=password,
-                         db=db_name,
-                        auth_plugin='mysql_native_password')
-    
-    cursor=connection.cursor()
-
-    sql='select Start_Time from ' +channel_name+ 'where Start_Date='+'"'+current_date+'"'+' and Event_name='+'"'+jingle+'"'
-    cursor.execute(sql)
-    records = cursor.fetchall()
-    
-    if len(records)==1:
-        return records[0]
-    else:
-    
-        for record in records:
-            #print(record)
-            interval=[]
-            interval.append(datetime.strptime(':'.join(record[0].split(':')[:3]),"%H:%M:%S")- timedelta(minutes=10))
-            interval.append(datetime.strptime(':'.join(record[0].split(':')[:3]),"%H:%M:%S")+ timedelta(minutes=10))
-        
-        
-            if current_time>interval[0] and current_time<interval[1]:
-                result=record
-        
-            
-        return result
-
-
-def update_jingle_time(channel_name,jingle,user,password,localhost,db_name):
-    
-    current_date=time.strftime("%d:%m:%Y").replace(':','/')
-    current_time=(time.strftime("%H:%M:%S")+":00",)
-    result=get_date_of_jingle(channel_name,jingle,user,password,localhost,db_name)
-    connection = mysql.connector.connect(host=localhost,
-                         user=user,
-                         password=password,
-                         db=db_name,
-                        auth_plugin='mysql_native_password')
-    
-    cursor=connection.cursor()
-    
-    sql='UPDATE '+channel_name+ 'SET Start_Time =%s where Start_Date='+'"'+current_date+'"'+' and Event_name='+'"'+jingle+'"'+'and Start_Time=%s'
-    ple=(current_time[0],result[0])
-    
-    cursor.execute(sql,ple)
-    
-    
-    connection.commit()
-
-
-
-def compare_images(i_frame,jingle):
-    img1=cv2.imread(i_frame)
-    img2=cv2.imread(jingle)
-    #print(img1)
-    #print(img2)
-    
-    orb= cv2.ORB_create()
-    
-    kb_a, desc_a= orb.detectAndCompute(img1,None)
-    kb_b, desc_b= orb.detectAndCompute(img2,None)
-     
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches=bf.match(desc_a, desc_b)
-    similar_regions=[i for i in matches if i.distance < 80]
-    
-    if len(matches) ==0:
-        return 0
-    return len(similar_regions)/len(matches)
-
-
-
-############## there is a case to handle when we handle the beginning of a show
-def get_folders_to_handle(channel_name,jingle,user,password,localhost,db_name):
-    
-    current_date=time.strftime("%d:%m:%Y").replace(':','/')
-    connection = mysql.connector.connect(host=localhost,
-                         user=user,
-                         password=password,
-                         db=db_name,
-                        auth_plugin='mysql_native_password')
-    
-    cursor=connection.cursor()
-    result=get_date_of_jingle(channel_name,jingle,user,password,localhost,db_name)[0]
-    sql='select id_diffussion from '+channel_name+ 'where Start_Date='+'"'+current_date+'"'+' and Event_name='+'"'+jingle+'"'+'and'+' Start_Time='+'"'+result+'"'
-    #sql='second select id_diffussion from rotana where Start_Date="01/07/2022" and Event_name="Al Wa3D"and Start_Time="00:40:00:00"'
-    #print('second',sql)
-    cursor.execute(sql)
-    records = cursor.fetchall()
-    
-    #print(records[0][0])
-    
-    idd=int(records[0][0])
-    prev,next=idd-1,idd+1
-    
-    sql1='SELECT 1 FROM '+channel_name+' WHERE id_diffussion='+'"'+str(prev)+'"'
-    cursor.execute(sql1)
-    
-    records1 = cursor.fetchall()
-    if records1==[]:
-        #for recor in records:
-        #event_name_1=get_records(prev,channel_name,user,password,localhost,db_name)
-        event_name_2=get_records(records[0][0],channel_name,user,password,localhost,db_name)
-        event_name_3=get_records(next,channel_name,user,password,localhost,db_name)
-        return event_name_2,event_name_3
-        
-    else:
-        event_name_1=get_records(prev,channel_name,user,password,localhost,db_name)
-        event_name_2=get_records(records[0][0],channel_name,user,password,localhost,db_name)
-        event_name_3=get_records(next,channel_name,user,password,localhost,db_name)
-        
-        return event_name_1,event_name_2,event_name_3
-
-
-
-
+logging.getLogger('sqlalchemy').setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
+# Create a filehandler object
+fh = logging.FileHandler(table_name+'/'+table_name+'.log')
+fh.setLevel(logging.INFO)
+# Create a ColoredFormatter to use as formatter for the FileHandler
+formatter = coloredlogs.ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+coloredlogs.install(level='INFO')
 
 filename = str(sys.argv[1])
 
 
-def script5(filename):
-    #read the i_frame
-    i_frame_detected= cv2.imread(filename)
+#filename ="2m/iframe_live/index4.1658835213_144_6.png" #str(sys.argv[1])
     
     #get the current time which the time of the i_frame
-    i_frame_time= time.strftime("%H:%M:00")
+i_frame_time= time.strftime("%H:%M:00")
     #get all the jingles inside 2m folder as an example
+logger.info('Handling this i_frame %s at %s',filename,i_frame_time)
+
+jingles = []
+for folder in get_folders_to_handle(table_name,user,password,localhost,db_name):
+    for file in glob.glob(table_name+"/iframes/"+folder+"/*.png"):
+        logger.info('getting %s show', folder)
+    #for file in glob.glob(table_name+"/iframes/"+folder+"/*.png"):
+        jingles.append(file)
+
+
+#time_of_chow=''
+#for jingle in jingles:
+def main(jingle):
+    time_of_chow=''
+    print(jingle.split('/')[-2])  
+    #check the similarity between the two images
+    logger.info('Measure the similarity between %s and %s',filename,jingle)
+    result= compare_images(filename,jingle)
+    logger.info('The result of the similarity between %s and %s is %s',filename,jingle,result)
     
-    jingles = []
-    for folder in list(get_folders_to_handle(table_name,jingle.split('/')[-2],user,password,localhost,db_name)):
-        for file in glob.glob(table_name+"/iframe_live/"+folder+"/*.png"):
-            jingles.append(file)
     
-    for jingle in jingles:
-        #check the similarity between the two images
-        result= compare_images(i_frame,jingle)
+    if result!=0:
+        logger.info('The %s and %s are NOT similar',filename,jingle)
+
+    else:  
+        #they are similar
+        logger.info('The %s and the %s are SIMILAR',filename,jingle)
+        time_of_chow=get_date_of_jingle(channel_name,jingle.split('/')[-2],user,password,localhost,db_name)[0]
+        dif_time = datetime.strptime(i_frame_time,"%H:%M:%S") - datetime.strptime(':'.join(time_of_chow.split(':')[:-1]),"%H:%M:%S")
         
-        # if they're not similar do nothing
-        if result<0.98:
-            pass
-
-        else:  
-            #they are similar
-            logger.info('There is a similarity between this i_frame %s and this i_frame %s at %s',jingle,i_frame,i_frame_time)
-            dif_time = i_frame_time - get_date_of_jingle(table_name,jingle.split('/')[-2],user,password,localhost,db_name)
-
-            if dif_time==0:
-                pass
+        if dif_time==0:
+            logger.info('The %s and the %s have the same time',filename,jingle)
                 
-            else:
-                update_jingle_time(table_name,jingle.split('/')[-2],user,password,localhost,db_name)
-                logger.info('There is an update in %s at %s',i_frame,i_frame_time)
+        else:
+            logger.info('The %s and the %s DONT NOT have the same time',filename,jingle)
+            update_jingle_time(table_name,jingle.split('/')[-2],user,password,localhost,db_name)
+            logger.info('Treatement is done for this %s',filename)
+            
+
+
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    executor.map(main, jingles)
+
+
 
 

@@ -101,7 +101,7 @@ create table IF NOT EXISTS {tab}
     cols = "`,`".join([str(i) for i in df.columns.tolist()])
 
     for i,row in df.iterrows():
-        sql1 = "INSERT INTO "+table_name+" (`" +cols + "`) VALUES (" + "%s,"*(len(row)-1) + "%s)"
+        sql1 = "INSERT IGNORE INTO "+table_name+" (`" +cols + "`) VALUES (" + "%s,"*(len(row)-1) + "%s)"
         cursor.execute(sql1, tuple(row))
         connection.commit()
     logger.info('Insert data from %s into %s table.',data_path.split('/')[-1],table_name)
