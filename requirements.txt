@@ -1,0 +1,7 @@
+coloredlogs==15.0.1
+MySQL-python==1.2.5
+mysql_connector_repackaged==0.3.1
+pandas==1.4.3
+pymysql==1.0.2
+python-dotenv==0.20.0
+SQLAlchemy==1.4.39
