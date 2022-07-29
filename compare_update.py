@@ -59,8 +59,8 @@ for folder in get_folders_to_handle(table_name,user,password,localhost,db_name):
 
 
 #time_of_chow=''
-#for jingle in jingles:
-def main(jingle):
+for jingle in jingles:
+#def main(jingle):
     time_of_chow=''
     print(jingle.split('/')[-2])  
     #check the similarity between the two images
@@ -88,8 +88,8 @@ def main(jingle):
             
 
 
-with concurrent.futures.ThreadPoolExecutor() as executor:
-    executor.map(main, jingles)
+# with concurrent.futures.ThreadPoolExecutor() as executor:
+#     executor.map(main, jingles)
 
 
 
